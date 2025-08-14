@@ -96,8 +96,12 @@ resource appService 'Microsoft.Web/sites@2022-03-01' = {
           value: 'https://${searchService.name}.search.windows.net'
         }
         {
-          name: 'AZURE_SEARCH_INDEX_NAME'
-          value: searchIndexName
+          name: 'AZURE_SEARCH_INDEX_NAME_INVENTORIES'
+          value: searchIndexNameInventories
+        }
+        {
+          name: 'AZURE_SEARCH_INDEX_NAME_INCIDENTS'
+          value: searchIndexNameIncidents
         }
         {
           name: 'SYSTEM_PROMPT'
@@ -213,7 +217,8 @@ param searchServiceName string = 'srch-${resourceToken}'
 param searchServiceSku string = 'standard'
 
 @description('Search index name')
-param searchIndexName string = 'index-name'
+param searchIndexNameInventories string = 'index-inventories'
+param searchIndexNameIncidents string = 'index-incidents'
 
 // Update Search service properties to support network security
 resource searchService 'Microsoft.Search/searchServices@2023-11-01' = {
@@ -246,11 +251,14 @@ resource searchService 'Microsoft.Search/searchServices@2023-11-01' = {
 @description('Name of the storage account')
 param storageAccountName string = 'st${replace(resourceToken, '-', '')}'
 
-@description('Name of the blob container for documents')
-param documentsContainerName string = 'documents'
+@description('Name of the blob container for inventories')
+param inventoriesContainerName string = 'inventories'
 
-@description('Name of the blob container for chunks')
-param chunksContainerName string = 'chunks'
+@description('Name of the blob container for incidents')
+param incidentsContainerName string = 'incidents'
+
+@description('Name of the blob container for Arc')
+param arcContainerName string = 'arc'
 
 // Create Storage Account
 resource storageAccount 'Microsoft.Storage/storageAccounts@2022-09-01' = {
@@ -279,19 +287,28 @@ resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2022-09-01'
   name: 'default'
 }
 
-// Create container for documents
-resource documentsContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2022-09-01' = {
+// Create container for inventories
+resource inventoriesContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2022-09-01' = {
   parent: blobService
-  name: documentsContainerName
+  name: inventoriesContainerName
   properties: {
     publicAccess: 'None'
   }
 }
 
-// Create container for chunks
-resource chunksContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2022-09-01' = {
+// Create container for incidents
+resource incidentsContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2022-09-01' = {
   parent: blobService
-  name: chunksContainerName
+  name: incidentsContainerName
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
+// Create container for Arc
+resource arcContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2022-09-01' = {
+  parent: blobService
+  name: arcContainerName
   properties: {
     publicAccess: 'None'
   }
@@ -309,6 +326,17 @@ resource appServiceOpenAIUserRoleAssignment 'Microsoft.Authorization/roleAssignm
     principalId: appService.identity.principalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd') // Cognitive Services OpenAI User
+  }
+}
+
+// Assign 'Search Service Data Reader' role to App Service to query Azure Search
+resource appServiceSearchDataReaderRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(appService.id, searchService.id, 'Search Service Data Reader')
+  scope: searchService
+  properties: {
+    principalId: appService.identity.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '1407120a-92aa-4202-b7e9-c0e197c71c8f') // Search Service Data Reader
   }
 }
 
@@ -367,6 +395,39 @@ resource searchStorageBlobDataReaderRoleAssignment 'Microsoft.Authorization/role
   }
 }
 
+// Assign 'Storage Blob Data Contributor' role to the user running the deployment
+resource userStorageBlobDataContributorRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(userPrincipalId)) {
+  name: guid(storageAccount.id, userPrincipalId, 'Storage Blob Data Contributor')
+  scope: storageAccount
+  properties: {
+    principalId: userPrincipalId
+    principalType: 'User'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe') // Storage Blob Data Contributor
+  }
+}
+
+// Assign 'Search Service Contributor' role to the user running the deployment
+resource userSearchServiceContributorRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(userPrincipalId)) {
+  name: guid(searchService.id, userPrincipalId, 'Search Service Contributor')
+  scope: searchService
+  properties: {
+    principalId: userPrincipalId
+    principalType: 'User'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7ca78c08-252a-4471-8644-bb5ff32d4ba0') // Search Service Contributor
+  }
+}
+
+// Assign 'Search Index Data Reader' role to the user running the deployment so local CLI-based execution can query index documents
+resource userSearchIndexDataReaderRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(userPrincipalId)) {
+  name: guid(searchService.id, userPrincipalId, 'Search Index Data Reader')
+  scope: searchService
+  properties: {
+    principalId: userPrincipalId
+    principalType: 'User'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '1407120a-92aa-4202-b7e9-c0e197c71c8f') // Search Index Data Reader
+  }
+}
+
 // Assign 'Cognitive Services OpenAI Contributor' role to the user running the deployment
 resource userOpenAIContributorRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(userPrincipalId)) {
   name: guid(openAiAccount.id, userPrincipalId, 'Cognitive Services OpenAI Contributor')
@@ -385,8 +446,12 @@ resource userOpenAIContributorRoleAssignment 'Microsoft.Authorization/roleAssign
 output AZURE_OPENAI_ENDPOINT string = openAiAccount.properties.endpoint
 output AZURE_OPENAI_GPT_DEPLOYMENT string = openAiGptDeploymentName
 output AZURE_OPENAI_EMBEDDING_DEPLOYMENT string = openAiEmbeddingDeploymentName
-output AZURE_SEARCH_INDEX_NAME string = searchService.name
+output AZURE_SEARCH_INDEX_NAME_INVENTORIES string = 'index-inventories'
+output AZURE_SEARCH_INDEX_NAME_INCIDENTS string = 'index-incidents'
+output AZURE_SEARCH_INDEX_NAME_ARC string = 'index-arc'
 output AZURE_SEARCH_SERVICE_URL string = 'https://${searchService.name}.search.windows.net'
+output AZURE_STORAGE_ACCOUNT_NAME string = storageAccount.name
+output AZURE_SEARCH_SERVICE_NAME string = searchService.name
 
 // ----------------------------------------------------
 // App Service diagnostics settings

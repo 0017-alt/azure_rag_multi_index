@@ -1,6 +1,6 @@
-name: app-service-rag-openai-ai-search-python
+name: sre-sample
 metadata:
-  template: app-service-rag-openai-ai-search-python@0.0.1
+  template: sre-sample@0.0.1
 infra:
   path: ./infra
 services:

@@ -10,13 +10,13 @@ html, body {
 /* Card styles for chat messages */
 .user-card {
     border-radius: 1rem 1rem 0.25rem 1rem;
-    background-color: #E3F2FD;
-    border: none;
+    background-color: #ffffff;
+    border: 1px solid #000000;
 }
 
 .assistant-card {
     border-radius: 1rem 1rem 1rem 0.25rem;
-    background-color: #E8F5E9;
+    background-color: #b683fa47;
     border: none;
 }
 
@@ -31,14 +31,15 @@ html, body {
     font-weight: bold;
     font-size: 0.75rem;
     color: white;
+    flex-shrink: 0;
 }
 
 .user-avatar-badge {
-    background-color: #1976D2;
+    background-color: #000000;
 }
 
 .assistant-avatar-badge {
-    background-color: #2E7D32;
+    background-color: #b783fa;
 }
 
 /* Loading indicator - simplified but keeping essential animation */
@@ -73,6 +74,12 @@ html, body {
 }
 
 /* Citation overlay and modal styles */
+.citation-badge {
+    background-color: #b783fa !important;
+    color: white !important;
+    cursor: pointer;
+}
+
 .citation-overlay {
     position: fixed;
     top: 0;

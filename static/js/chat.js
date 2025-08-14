@@ -24,10 +24,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const errorContainer = document.getElementById('error-container');
     const errorMessage = document.getElementById('error-message');
     
-    // Templates
-    const emptyChatTemplate = document.getElementById('empty-chat-template');
-    const userMessageTemplate = document.getElementById('user-message-template');
-    const assistantMessageTemplate = document.getElementById('assistant-message-template');
+
     
     // Quick response buttons
     const btnPersonalInfo = document.getElementById('btn-personal-info');
@@ -37,19 +34,12 @@ document.addEventListener('DOMContentLoaded', function() {
     // Chat history array
     let messages = [];
     
-    // Initialize empty chat
-    if (emptyChatTemplate) {
-        const emptyContent = emptyChatTemplate.content.cloneNode(true);
-        chatHistory.appendChild(emptyContent);
-    }
+
     
     // Event listeners
     chatForm.addEventListener('submit', handleChatSubmit);
     chatInput.addEventListener('keydown', handleKeyDown);
-    btnPersonalInfo.addEventListener('click', () => sendQuickQuestion("What does Contoso do with my personal information?"));
-    btnWarranty.addEventListener('click', () => sendQuickQuestion("How do I file a warranty claim?"));
-    btnCompany.addEventListener('click', () => sendQuickQuestion("Tell me about your company."));
-    
+
     /**
      * Handles form submission when the user sends a message
      */
@@ -75,16 +65,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     /**
-     * Sends a predefined quick question when a suggestion button is clicked
-     */
-    function sendQuickQuestion(text) {
-        if (!isLoading()) {
-            chatInput.value = text;
-            sendMessage(text);
-        }
-    }
-    
-    /**
      * Checks if a request is currently loading
      */
     function isLoading() {
@@ -95,15 +75,50 @@ document.addEventListener('DOMContentLoaded', function() {
      * Displays a user message in the chat interface
      */
     function addUserMessage(text) {
-        // Clear empty chat template if this is the first message
+        // Remove any placeholder if present
         if (chatHistory.querySelector('.text-center')) {
             chatHistory.innerHTML = '';
         }
+        // Create user message DOM directly
+        const wrapper = document.createElement('div');
+        wrapper.className = 'd-flex mb-4 justify-content-end align-items-end';
+        const card = document.createElement('div');
+        card.className = 'card user-card';
+        card.style.maxWidth = '80%';
+        const cardBody = document.createElement('div');
+        cardBody.className = 'card-body';
+        const messageContent = document.createElement('div');
+        messageContent.className = 'message-content';
+        messageContent.style.lineHeight = '1.5';
         
-        const messageNode = userMessageTemplate.content.cloneNode(true);
-        const messageContent = messageNode.querySelector('.message-content');
-        messageContent.innerHTML = text.replace(/\n/g, '<br>');
-        chatHistory.appendChild(messageNode);
+        // Convert markdown to HTML for user messages too
+        let htmlContent;
+        try {
+            // Configure marked options
+            marked.setOptions({
+                breaks: true,
+                gfm: true,
+                headerIds: false,
+                mangle: false
+            });
+            
+            htmlContent = marked.parse(text);
+        } catch (error) {
+            console.warn('Markdown parsing failed for user message, falling back to plain text:', error);
+            htmlContent = text.replace(/\n/g, '<br>');
+        }
+        
+        messageContent.innerHTML = htmlContent;
+        cardBody.appendChild(messageContent);
+        card.appendChild(cardBody);
+        wrapper.appendChild(card);
+        
+        // Add avatar next to the message card
+        const avatar = document.createElement('div');
+        avatar.className = 'avatar-badge user-avatar-badge ms-2';
+        avatar.textContent = 'You';
+        wrapper.appendChild(avatar);
+        chatHistory.appendChild(wrapper);
         scrollToBottom();
     }
     
@@ -118,77 +133,95 @@ document.addEventListener('DOMContentLoaded', function() {
      * 5. Adds the message to the chat history
      */
     function addAssistantMessage(content, citations) {
-        const messageNode = assistantMessageTemplate.content.cloneNode(true);
-        const messageContent = messageNode.querySelector('.message-content');
-        const messageDiv = messageNode.querySelector('.card');
-        
-        // Create a unique ID for this message
+        // Create assistant message DOM directly
+        const wrapper = document.createElement('div');
+        // Keep items on one line and align at the top so the avatar stays left of the bubble
+        wrapper.className = 'd-flex mb-4 align-items-start flex-nowrap';
+        wrapper.style.width = '100%';
+        const card = document.createElement('div');
+        card.className = 'card assistant-card';
+        // Allow the bubble to shrink within the flex row to avoid wrapping under the avatar
+        card.style.maxWidth = '80%';
+        card.style.flexShrink = '1';
+        card.style.minWidth = '0';
+        const cardBody = document.createElement('div');
+        cardBody.className = 'card-body';
+        const messageContent = document.createElement('div');
+        messageContent.className = 'message-content';
+        messageContent.style.lineHeight = '1.5';
+        // Prevent long words/URLs from forcing the bubble wider than available space
+        messageContent.style.wordBreak = 'break-word';
+        messageContent.style.overflowWrap = 'anywhere';
+        // Handle citations
+        let formattedContent = content || '';
         const messageId = 'msg-' + Date.now();
-        messageDiv.setAttribute('id', messageId);
-        
-        // Create a message-specific citation data store
         const messageCitations = {};
-        
-        if (content && content.length > 0) {
-            // Format content with citations if available
-            let formattedContent = content;
-            
-            if (citations && citations.length > 0) {
-                // Replace [doc1], [doc2], etc. with interactive citation links
-                const pattern = /\[doc(\d+)\]/g;
-                formattedContent = formattedContent.replace(pattern, (match, index) => {
-                    const idx = parseInt(index);
-                    if (idx > 0 && idx <= citations.length) {
-                        const citation = citations[idx - 1];
-                        const citationData = JSON.stringify({
-                            title: citation.title || '',
-                            content: citation.content || '',
-                            filePath: citation.filePath || '',
-                            url: citation.url || ''
-                        });
-                        
-                        // Store citation data in this message's citations
-                        messageCitations[idx] = citationData;
-                        
-                        // Create badge-style citation link
-                        return `<a class="badge bg-primary rounded-pill" style="cursor: pointer;" data-message-id="${messageId}" data-index="${idx}">${idx}</a>`;
-                    }
-                    return match;
-                });
-            }
-            
-            messageContent.innerHTML = formattedContent.replace(/\n/g, '<br>');
-            
-            // Store the message citations as a data attribute
-            messageDiv.setAttribute('data-citations', JSON.stringify(messageCitations));
-            
-            // Add click listeners for citation badges
-            setTimeout(() => {
-                const badges = messageContent.querySelectorAll('.badge[data-index]');
-                
-                badges.forEach(badge => {
-                    badge.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        
-                        const messageId = this.getAttribute('data-message-id');
-                        const idx = this.getAttribute('data-index');
-                        
-                        // Get the message element
-                        const messageElement = document.getElementById(messageId);
-                        
-                        // Get this message's citations
-                        const messageCitations = JSON.parse(messageElement.getAttribute('data-citations') || '{}');
-                        const citationData = JSON.parse(messageCitations[idx]);
-                        
-                        // Show citation modal
-                        showCitationModal(citationData);
+        if (citations && citations.length > 0) {
+            const pattern = /\[doc(\d+)\]/g;
+            formattedContent = formattedContent.replace(pattern, (match, index) => {
+                const idx = parseInt(index);
+                if (idx > 0 && idx <= citations.length) {
+                    const citation = citations[idx - 1];
+                    const citationData = JSON.stringify({
+                        title: citation.title || '',
+                        content: citation.content || '',
+                        filePath: citation.filePath || '',
+                        url: citation.url || ''
                     });
-                });
-            }, 100);
+                    messageCitations[idx] = citationData;
+                    return `<a class="badge citation-badge rounded-pill" data-message-id="${messageId}" data-index="${idx}">${idx}</a>`;
+                }
+                return match;
+            });
         }
         
-        chatHistory.appendChild(messageNode);
+        // Convert markdown to HTML using marked.js
+        let htmlContent;
+        try {
+            // Configure marked options for better rendering
+            marked.setOptions({
+                breaks: true,        // Support line breaks
+                gfm: true,          // GitHub Flavored Markdown
+                headerIds: false,   // Disable header IDs
+                mangle: false       // Don't mangle autolinks
+            });
+            
+            // Parse markdown to HTML
+            htmlContent = marked.parse(formattedContent);
+        } catch (error) {
+            console.warn('Markdown parsing failed, falling back to plain text:', error);
+            htmlContent = formattedContent.replace(/\n/g, '<br>');
+        }
+        
+        messageContent.innerHTML = htmlContent;
+        cardBody.appendChild(messageContent);
+        card.appendChild(cardBody);
+        card.setAttribute('id', messageId);
+        card.setAttribute('data-citations', JSON.stringify(messageCitations));
+        
+        // Add avatar next to the message card (assistant on the left)
+        const avatar = document.createElement('div');
+        avatar.className = 'avatar-badge assistant-avatar-badge me-2';
+        avatar.textContent = 'AI';
+        wrapper.appendChild(avatar);
+        wrapper.appendChild(card);
+        chatHistory.appendChild(wrapper);
+        // Add click listeners for citation badges
+        setTimeout(() => {
+            const badges = messageContent.querySelectorAll('.badge[data-index]');
+            badges.forEach(badge => {
+                badge.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const messageId = this.getAttribute('data-message-id');
+                    const idx = this.getAttribute('data-index');
+                    const messageElement = document.getElementById(messageId);
+                    const messageCitations = JSON.parse(messageElement.getAttribute('data-citations') || '{}');
+                    const citationData = JSON.parse(messageCitations[idx]);
+                    showCitationModal(citationData);
+                });
+            });
+        }, 100);
         scrollToBottom();
     }
     
@@ -202,8 +235,30 @@ document.addEventListener('DOMContentLoaded', function() {
             existingOverlay.remove();
         }
         
-        // Format the citation content for better display
+        // Format the citation content for better display with Markdown support
         let formattedContent = citationData.content || 'No content available';
+        
+        // Remove URLs from markdown links, keeping only the title text
+        // Pattern matches [title](url) and replaces with just title
+        formattedContent = formattedContent.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+        
+        let htmlContent;
+        
+        try {
+            // Configure marked options for citation content
+            marked.setOptions({
+                breaks: true,
+                gfm: true,
+                headerIds: false,
+                mangle: false
+            });
+            
+            // Parse markdown to HTML
+            htmlContent = marked.parse(formattedContent);
+        } catch (error) {
+            console.warn('Markdown parsing failed for citation content, falling back to plain text:', error);
+            htmlContent = formattedContent.replace(/\n/g, '<br>');
+        }
         
         // Create overlay and modal
         const overlay = document.createElement('div');
@@ -219,7 +274,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <button type="button" class="citation-close-button" aria-label="Close">&times;</button>
                 </div>
                 <div class="citation-modal-body">
-                    <pre class="citation-content">${formattedContent}</pre>
+                    <div class="citation-content markdown-content">${htmlContent}</div>
                     ${citationData.filePath ? `<div class="citation-source mt-3"><strong>Source:</strong> ${citationData.filePath}</div>` : ''}
                     ${citationData.url ? `<div class="citation-url mt-2"><strong>URL:</strong> <a href="${citationData.url}" target="_blank" rel="noopener noreferrer">${citationData.url}</a></div>` : ''}
                 </div>
@@ -276,9 +331,9 @@ document.addEventListener('DOMContentLoaded', function() {
     function showLoading() {
         loadingIndicator.classList.remove('d-none');
         sendButton.disabled = true;
-        btnPersonalInfo.disabled = true;
-        btnWarranty.disabled = true;
-        btnCompany.disabled = true;
+        if (typeof btnPersonalInfo !== 'undefined' && btnPersonalInfo) btnPersonalInfo.disabled = true;
+        if (typeof btnWarranty !== 'undefined' && btnWarranty) btnWarranty.disabled = true;
+        if (typeof btnCompany !== 'undefined' && btnCompany) btnCompany.disabled = true;
     }
     
     /**
@@ -287,9 +342,9 @@ document.addEventListener('DOMContentLoaded', function() {
     function hideLoading() {
         loadingIndicator.classList.add('d-none');
         sendButton.disabled = false;
-        btnPersonalInfo.disabled = false;
-        btnWarranty.disabled = false;
-        btnCompany.disabled = false;
+        if (typeof btnPersonalInfo !== 'undefined' && btnPersonalInfo) btnPersonalInfo.disabled = false;
+        if (typeof btnWarranty !== 'undefined' && btnWarranty) btnWarranty.disabled = false;
+        if (typeof btnCompany !== 'undefined' && btnCompany) btnCompany.disabled = false;
     }
     
     /**
@@ -329,7 +384,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Show loading indicator
         showLoading();
-        
+
         // Send request to server
         fetch('/api/chat/completion', {
             method: 'POST',
@@ -337,7 +392,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                messages: messages
+                messages: messages,
             })
         })
         .then(response => {
