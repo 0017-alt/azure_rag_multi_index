@@ -1,5 +1,4 @@
 ## RAG Multi‑Index Infrastructure Assistant
-
 This project is an Azure-based Retrieval Augmented Generation (RAG) web application that answers infrastructure questions about servers, incidents, and ownership data. It combines Azure OpenAI (GPT + Embeddings), Azure AI Search (multiple indexes), and Azure Blob Storage. The app is deployed to Azure App Service using the Azure Developer CLI (`azd`) and Bicep infrastructure as code.
 
 > Origin inspired by: https://github.com/Azure-Samples/app-service-rag-openai-ai-search-python (heavily adapted & extended for multi-index + infra prompt use case).
@@ -17,7 +16,7 @@ This project is an Azure-based Retrieval Augmented Generation (RAG) web applicat
 
 Component | Purpose
 ----------|--------
-App Service (Linux, Python) | Hosts FastAPI / Uvicorn app
+App Service (Linux, .NET 8) | Hosts ASP.NET Core Web API (new backend in `src/RagMultiIndex.Api`)
 Azure OpenAI (GPT + Embeddings) | Text generation & embedding vectorization
 Azure AI Search | Structured + semantic retrieval across indexes
 Storage Account (Blob) | Source documents (inventories / incidents / arc)
@@ -38,39 +37,27 @@ Relevant files:
 * Git
 
 ---
-## Quick Start (Local)
+## Quick Start (Local - .NET Backend)
+The new ASP.NET Core backend mirrors the Python endpoints:
+* GET `/` -> serves `wwwroot/index.html`
+* POST `/api/chat/completion`
+* GET `/api/health`
+
 ```pwsh
-# 1. Clone
-git clone <this-repo-url> && cd sre-sample
-
-# 2. Python virtual env
-python -m venv .venv
-./.venv/Scripts/Activate.ps1  # (Windows PowerShell)
-
-# 3. Install deps
-pip install -r requirements.txt
-
-# 4. (First time) Provision Azure infra (creates OpenAI/Search/etc.)
-azd auth login
-azd up   # or: azd provision (infra) + azd deploy (code)
-
-# 5. Retrieve output values (or view in Portal)
-azd env get-values > azd-values.txt
-
-# 6. Create a .env from sample & fill dynamic values
-copy .env.sample .env  # then edit
-
-# 7. Upload data to Blob Storage
-python ./scripts/upload_data_to_blob_storage.py
-
-# 8. Create / update search indexes & vectors
-python ./scripts/create_azure_ai_indices.py
-
-# 9. Run locally
-uvicorn main:app --reload
+cd src/RagMultiIndex.Api
+dotnet restore
+# Set required environment variables (use values from azd outputs)
+$env:AZURE_OPENAI_ENDPOINT="https://<openai-name>.openai.azure.com/"
+$env:AZURE_OPENAI_GPT_DEPLOYMENT="gpt-4o-mini"
+$env:AZURE_SEARCH_SERVICE_URL="https://<search-name>.search.windows.net"
+$env:AZURE_SEARCH_INDEX_NAME_INVENTORIES="index-inventories"
+$env:AZURE_SEARCH_INDEX_NAME_INCIDENTS="index-incidents"
+$env:AZURE_SEARCH_INDEX_NAME_ARC="index-arc"
+dotnet run
 ```
+Local URL (default - .NET): http://localhost:5000 (or shown in console)
 
-Local URL (default): http://127.0.0.1:8000
+> During migration you can keep both; production deployment will target the .NET project once validated.
 
 ---
 ## Environment Variables
@@ -114,7 +101,8 @@ Initial full provision + deploy:
 azd auth login
 azd up     # provisions infra + builds + deploys code
 ```
-Subsequent code-only deployments:
+
+Deploy the new .NET service after migration (update `azure.yaml` already points to dotnet project):
 ```pwsh
 azd deploy
 ```
@@ -181,6 +169,23 @@ azd down
 Or delete the resource group in the Azure Portal.
 
 ---
+## Migration Status / Next Steps
+Phase | Status | Notes
+------|--------|------
+Scaffold .NET project | Done | `src/RagMultiIndex.Api`
+Replicate endpoints | Done | Health & Chat
+Static UI port | Done | Copied original HTML/CSS/JS
+Index selection logic | Done | `IndexSelectionService`
+Citation extraction | Pending | Currently placeholder list
+Automated tests | Pending | Add xUnit for selection fallback
+Docs update | In progress | This section added
+
+To finalize migration:
+1. Remove Python stack from App Service or create new slot for .NET
+2. Implement citation parsing if required
+3. Add tests & CI
+4. Remove legacy Python directories when no longer needed
+
 ## Next Improvements (Ideas)
 * Add vector store hybrid search scoring customization
 * Implement caching layer (Azure Cache for Redis) for frequent queries

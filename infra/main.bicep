@@ -64,20 +64,25 @@ resource appService 'Microsoft.Web/sites@2022-03-01' = {
     serverFarmId: appServicePlan.id
     httpsOnly: true
     siteConfig: {
-      // Configure Linux with Python 3.12
-      linuxFxVersion: 'PYTHON|3.12'
-      alwaysOn: true
-      // Required by FastAPI: start Gunicorn with Uvicorn workers
-      appCommandLine: 'gunicorn -w 2 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 main:app'
+  // Configure Linux with .NET 8
+  linuxFxVersion: 'DOTNET|8.0'
+  alwaysOn: true
+  // .NET: no custom appCommandLine needed; default Kestrel startup
       // Enable application logging
       httpLoggingEnabled: true
       detailedErrorLoggingEnabled: true
       requestTracingEnabled: true
       logsDirectorySizeLimit: 35
       appSettings: [
+        // For .NET build, enable Oryx build during deployment
         {
           name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
           value: 'true'
+        }
+        // Optional: set ASPNETCORE_ENVIRONMENT if needed
+        {
+          name: 'ASPNETCORE_ENVIRONMENT'
+          value: 'Production'
         }
         {
           name: 'AZURE_OPENAI_ENDPOINT'

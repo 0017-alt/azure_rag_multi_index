@@ -5,6 +5,6 @@ infra:
   path: ./infra
 services:
   web:
-    project: .
-    language: python
+    project: ./src/RagMultiIndex.Api
+    language: dotnet
     host: appservice
