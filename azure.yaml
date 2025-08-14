@@ -1,0 +1,10 @@
+name: rag-multi-index
+metadata:
+  template: rag-multi-index@0.0.1
+infra:
+  path: ./infra
+services:
+  web:
+    project: ./src/RagMultiIndex.Api
+    language: dotnet
+    host: appservice
