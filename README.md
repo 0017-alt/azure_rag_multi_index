@@ -36,7 +36,6 @@ Relevant files:
 * Azure CLI (`az`) and signed-in subscription access
 * Azure Developer CLI (`azd`) latest version
 * Git
-* (Optional) Bash for `create_indices.sh` or use the Python alternative
 
 ---
 ## Quick Start (Local)
