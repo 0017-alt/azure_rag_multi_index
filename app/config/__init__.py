@@ -1,11 +1,5 @@
 """
-Configuration settings for the FastAPI RAG application
-
-This module uses Pydantic's settings management to:
-1. Define configuration models for the application
-2. Load environment variables from .env file or environment
-3. Validate the configuration values
-4. Provide strongly-typed access to settings throughout the app
+Config settings for the FastAPI RAG app
 """
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -80,7 +74,4 @@ class AppSettings(BaseSettings):
             index_name=self.azure_search_index_name
         )
 
-
-# Create settings instance - environment variables will be loaded automatically
-# This creates a singleton instance that can be imported throughout the app
 settings = AppSettings()

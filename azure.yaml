@@ -1,6 +1,6 @@
-name: sre-sample
+name: rag-multi-index
 metadata:
-  template: sre-sample@0.0.1
+  template: rag-multi-index@0.0.1
 infra:
   path: ./infra
 services:

@@ -12,7 +12,7 @@ search_service_endpoint = "https://" + os.getenv("AZURE_SEARCH_SERVICE_NAME") + 
 
 storage_account_name = os.getenv("AZURE_STORAGE_ACCOUNT_NAME")
 user_assigned_identity_resource_id = os.getenv("USER_ASSIGNED_IDENTITY_RESOURCE_ID")
-storage_account_resource_id = os.getenv("AZURE_STORAGE_ACCOUNT_RESOURCE_ID")  # 例: /subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Storage/storageAccounts/xxx
+storage_account_resource_id = os.getenv("AZURE_STORAGE_ACCOUNT_RESOURCE_ID") 
 
 credential = DefaultAzureCredential()
 index_client = SearchIndexClient(endpoint=search_service_endpoint, credential=credential)

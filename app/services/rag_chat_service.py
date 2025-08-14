@@ -1,9 +1,5 @@
 """
-RAG Chat Service using Azure OpenAI and Azure AI Search
-
-This module implements a Retrieval Augmented Generation (RAG) service that connects
-Azure OpenAI with Azure AI Search. RAG enhances LLM responses by grounding them in
-your enterprise data stored in Azure AI Search.
+RAG Chat Service using Azure OpenAI and AI Search
 """
 import logging
 from typing import List
@@ -18,18 +14,11 @@ logger = logging.getLogger(__name__)
 
 class RagChatService:
     """
-    Service that provides Retrieval Augmented Generation (RAG) capabilities
-    by connecting Azure OpenAI with Azure AI Search for grounded responses.
-    
-    This service:
-    1. Handles authentication to Azure services using Managed Identity
-    2. Implements the "On Your Data" pattern using Azure AI Search as a data source
-    3. Processes user queries and returns AI-generated responses grounded in your data
+    Service that provides RAG capabilities by connecting Azure OpenAI with Azure AI Search.
     """
     
     def __init__(self):
-        """Initialize the RAG chat service using settings from app config"""
-        # Store settings for easy access
+        # Store settings
         self.openai_endpoint = settings.azure_openai_endpoint
         self.gpt_deployment = settings.azure_openai_gpt_deployment
         self.embedding_deployment = settings.azure_openai_embedding_deployment
@@ -182,6 +171,4 @@ class RagChatService:
                 logger.error(f"Error in get_chat_completion: {e}")
             raise
 
-
-# Create singleton instance
 rag_chat_service = RagChatService()

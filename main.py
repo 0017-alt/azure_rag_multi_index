@@ -1,16 +1,5 @@
 """
-FastAPI RAG application using Azure OpenAI and Azure AI Search
-
-This sample app demonstrates how to build a RAG (Retrieval Augmented Generation) application
-that combines the power of Azure OpenAI with Azure AI Search to create an AI assistant
-that answers questions based on your own data.
-
-Key components:
-1. FastAPI web framework for the backend API
-2. Azure OpenAI for AI chat completions
-3. Azure AI Search for document retrieval
-4. Pydantic for configuration and data validation
-5. Bootstrap and JavaScript for the frontend UI
+FastAPI RAG app using Azure OpenAI and Azure AI Search
 """
 import os
 import logging

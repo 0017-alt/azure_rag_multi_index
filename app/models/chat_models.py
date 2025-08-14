@@ -1,13 +1,5 @@
 """
-Chat models for FastAPI RAG application
-
-This module defines Pydantic models that:
-1. Validate the structure of API requests
-2. Provide type hints for better development experience
-3. Generate automatic API documentation with FastAPI
-4. Support JSON serialization/deserialization
-
-The models focus on the core message structures needed for the chat interface.
+Chat models for FastAPI RAG app
 """
 from typing import List
 from pydantic import BaseModel, Field

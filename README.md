@@ -1,14 +1,13 @@
-* run `python -m venv .venv`
-* activate venv
-* run `pip install -r requirements.txt`
-* run `chmod +x ./scripts/get_microsoft_docs.sh create_indices.sh`
-* run `./scripts/get_microsoft_docs.sh`
-* run `azd auth login`
-* run `azd provision`
-* run `azd env get-values` and fill in .env file
-* run `./scripts/create_indices.sh`
-* run `az login`
-* run `pip install -r requirements.txt`
-* run `uvicorn main:app`
-* try in local
-* run `azd up`
+```shell
+$ python -m venv .venv # activate venv
+$ pip install -r requirements.txt
+$ azd auth login
+$ azd provision
+$ azd env get-values # then, fill in .env file
+$ python ./scripts/upload_data_to_blob_storage.py # upload docs to Azure Blob Container
+$ python ./scripts/create_index.py# 
+$ az login
+$ pip install -r requirements.txt
+$ uvicorn main:app # you can try locally
+$ azd up # deploy in Azure
+```
