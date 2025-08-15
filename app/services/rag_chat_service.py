@@ -2,7 +2,7 @@
 RAG Chat Service using Azure OpenAI and AI Search
 """
 import logging
-from typing import List
+from typing import List, Tuple
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from openai import AsyncAzureOpenAI
 from app.models.chat_models import ChatMessage
@@ -67,104 +67,152 @@ class RagChatService:
 
         logger.info("RagChatService initialized with environment variables")
     
-    async def get_chat_completion(self, history: List[ChatMessage], top_k: int = 3):
-        """
-        Search multiple indexes using the AI Search REST API, embed the results into the prompt, and pass them to OpenAI for RAG processing.
-        Uses LLM to determine which index(es) to use. Both can be True.
-        Args:
-            history: Chat history
-            top_k: Number of documents to retrieve from each index
-        Returns:
-            Response from the OpenAI API
-        """
+    async def _condense_query(self, history: List[ChatMessage]) -> Tuple[str, str]:
+        """Generate a standalone condensed query from recent multi-turn chat history.
+        Returns (condensed_query, last_user_query)."""
+        if not history:
+            return "", ""
+
+        recent_history = history[-20:] if len(history) > 20 else history
+        # Extract last user query
+        last_user_query = next((m.content for m in reversed(recent_history) if m.role == 'user'), recent_history[-1].content)
+
+        # Build a lightweight transcript for rewriting (include roles)
+        transcript_lines = []
+        for m in recent_history:
+            # Keep only user + assistant to limit tokens
+            if m.role in ("user", "assistant"):
+                transcript_lines.append(f"{m.role.upper()}: {m.content}")
+        transcript = "\n".join(transcript_lines)[-5000:]  # crude length guard
+
+        rewrite_prompt = (
+            "You are a system that rewrites the latest user query into a standalone question. "
+            "Incorporate necessary context from earlier turns (entities, references like 'that server', 'the previous incident'). "
+            "Do NOT answer the question. Only output the rewritten query. If the last user query is already standalone, return it unchanged.\n\n"
+            f"Conversation (most recent last):\n{transcript}\n\nRewritten standalone query:"
+        )
         try:
-            recent_history = history[-20:] if len(history) > 20 else history
-            user_query = recent_history[-1].content if recent_history else ""
-
-            # Use LLM to decide which index(es) to use
-            index_selection_prompt = (
-                "Given the following user query, decide which index(es) should be used to answer it. "
-                "There are two indexes: 'inventories' and 'incidents'.\n"
-                "- If the query is about responsible department or contact information, set 'inventories' to True.\n"
-                "- If the query is about past incident information, set 'incidents' to True.\n"
-                "- If the query is about Azure Arc information, set 'arc' to True.\n"
-                "- If some apply, set them to True.\n"
-                "Return a JSON object like: {\"inventories\": true, \"incidents\": false, \"arc\": false} or {\"inventories\": true, \"incidents\": true, \"arc\": true}.\n"
-                "User query: " + user_query
+            resp = await self.openai_client.chat.completions.create(
+                model=self.gpt_deployment,
+                messages=[{"role": "user", "content": rewrite_prompt}],
             )
+            condensed = resp.choices[0].message.content.strip()
+            logger.debug(f"Condensed query: {condensed}")
+            # Basic sanity: avoid model giving multi-line answer instead of a query
+            if '\n' in condensed and len(condensed.split('\n')) > 3:
+                condensed = last_user_query  # fallback
+        except Exception as e:
+            logger.warning(f"Query condensation failed, falling back to last user query: {e}")
+            condensed = last_user_query
+        return condensed, last_user_query
 
-            logger.debug("Sending index selection prompt to OpenAI")
+    async def _select_indexes(self, condensed_query: str) -> Tuple[bool, bool, bool]:
+        """Use LLM to decide which indexes to search based on the condensed query."""
+        import json
+        index_selection_prompt = (
+            "Decide which indexes should be searched to answer the user's request.\n"
+            "Indexes: 'inventories' (ownership/contact/server metadata), 'incidents' (past incident info), 'arc' (Azure Arc resource data).\n"
+            "Return ONLY JSON like {\"inventories\": true, \"incidents\": false, \"arc\": false}. If unsure, set a field to true.\n"
+            f"Query: {condensed_query}"
+        )
+        try:
             selection_response = await self.openai_client.chat.completions.create(
                 messages=[{"role": "user", "content": index_selection_prompt}],
                 model=self.gpt_deployment
             )
-            import json
             selection_text = selection_response.choices[0].message.content.strip()
-            logger.info(f"Index selection response: {selection_text}")
-            try:
-                selection = json.loads(selection_text)
-                search_inventories = bool(selection.get("inventories", False))
-                search_incidents = bool(selection.get("incidents", False))
-                search_arc = bool(selection.get("arc", False))
-            except Exception:
-                # fallback: search both
-                search_inventories = True
-                search_incidents = True
-                search_arc = True
+            selection = json.loads(selection_text)
+            return bool(selection.get("inventories", False)), bool(selection.get("incidents", False)), bool(selection.get("arc", False))
+        except Exception as e:
+            logger.warning(f"Index selection failed ({e}); defaulting to all indexes")
+            return True, True, True
 
-            sources = ""
-            # Query Azure AI Search (separate try blocks so we can pinpoint 403 origin)
+    async def get_chat_completion(self, history: List[ChatMessage], top_k: int = 3):
+        """Multi-turn RAG flow considering recent chat history.
+        Steps:
+          1. Condense conversation into a standalone query.
+          2. LLM-based index selection using condensed query.
+          3. Retrieve documents from selected indexes with condensed query.
+          4. Inject sources + original last user query into system prompt for final answer.
+        """
+        try:
+            condensed_query, last_user_query = await self._condense_query(history)
+            effective_query = condensed_query or last_user_query
+
+            search_inventories, search_incidents, search_arc = await self._select_indexes(effective_query)
+
+            sources_parts: List[str] = []
+
+            def _accumulate(name: str, results):
+                docs = [doc.get("content", "") for doc in results]
+                trimmed = [d for d in docs if d]
+                if trimmed:
+                    sources_parts.append(f"--- {name} ---\n" + "\n".join(trimmed))
+
+            # Query inventories
             if search_inventories:
                 try:
                     logger.debug("Querying inventories index")
-                    search_results = self.search_client_inventories.search(
-                        search_text=user_query,
+                    inv_results = self.search_client_inventories.search(
+                        search_text=effective_query,
                         top=1,
                         select="content"
                     )
-                    sources_formatted = "\n".join([f'{document.get("content", "")}' for document in search_results])
-                    sources += sources_formatted + "\n"
+                    _accumulate("inventories", inv_results)
                 except Exception as se:
                     logger.error(f"Search query failed for inventories index: {se}")
+            # Query incidents
             if search_incidents:
                 try:
                     logger.debug("Querying incidents index")
-                    search_results = self.search_client_incidents.search(
-                        search_text=user_query,
+                    inc_results = self.search_client_incidents.search(
+                        search_text=effective_query,
                         top=top_k,
                         select="content"
                     )
-                    sources_formatted = "\n".join([f'{document.get("content", "")}' for document in search_results])
-                    sources += sources_formatted + "\n"
+                    _accumulate("incidents", inc_results)
                 except Exception as se:
                     logger.error(f"Search query failed for incidents index: {se}")
+            # Query arc
             if search_arc:
                 try:
                     logger.debug("Querying arc index")
-                    search_results = self.search_client_arc.search(
-                        search_text=user_query,
+                    arc_results = self.search_client_arc.search(
+                        search_text=effective_query,
                         top=1,
                         select="content"
                     )
-                    sources_formatted = "\n".join([f'{document.get("content", "")}' for document in search_results])
-                    sources += sources_formatted + "\n"
+                    _accumulate("arc", arc_results)
                 except Exception as se:
                     logger.error(f"Search query failed for arc index: {se}")
 
+            sources = "\n\n".join(sources_parts)
+
+            # Final answer request
+            final_content = self.system_prompt.format(
+                query=last_user_query or effective_query,
+                sources=sources
+            )
+
             response = await self.openai_client.chat.completions.create(
-                messages=[
-                    {
-                        "role": "user",
-                        "content": self.system_prompt.format(query=user_query, sources=sources)
-                    }
-                ],
+                messages=[{"role": "user", "content": final_content}],
                 model=self.gpt_deployment
             )
 
+            # Optionally attach metadata for client (not modifying OpenAI response object structure deeply)
+            try:
+                response.metadata = {
+                    "condensed_query": effective_query,
+                    "indexes": {
+                        "inventories": search_inventories,
+                        "incidents": search_incidents,
+                        "arc": search_arc
+                    }
+                }
+            except Exception:
+                pass
             return response
-
         except Exception as e:
-            # Enrich logging for 403 / auth issues
             if hasattr(e, 'status_code'):
                 logger.error(f"Error in get_chat_completion (status {getattr(e, 'status_code', 'n/a')}): {e}")
             else:

@@ -139,7 +139,7 @@ ANSWER FORMAT:
 RULES:
 1. Use only facts from Sources.
 2. Do not output internal reasoning.
-3. Say 'insufficient information' when data not found.
+3. Say 'insufficient information' in the user's language when data not found.
 4. Do not include unrelated marketing or speculative content.
 
 Now answer the user Query in the language of the user Query using only Sources.
