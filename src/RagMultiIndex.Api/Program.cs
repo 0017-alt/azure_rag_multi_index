@@ -8,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddHealthChecks();
 
 // Configuration & clients
 var config = builder.Configuration;
@@ -35,6 +36,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
+
+// Health check endpoints (primary + backward compatibility)
+app.MapHealthChecks("/api/health");
+
 app.MapControllers();
 
 app.Run();
