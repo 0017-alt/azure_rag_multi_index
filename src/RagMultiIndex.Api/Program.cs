@@ -8,7 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-builder.Services.AddHealthChecks(); // Basic health checks (extend with dependencies later)
+builder.Services.AddHealthChecks();
 
 // Configuration & clients
 var config = builder.Configuration;
@@ -38,8 +38,7 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 
 // Health check endpoints (primary + backward compatibility)
-app.MapHealthChecks("/healthz");
-app.MapHealthChecks("/api/health"); // Deprecated: migrate clients to /healthz
+app.MapHealthChecks("/api/health");
 
 app.MapControllers();
 
